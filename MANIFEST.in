@@ -1,0 +1,4 @@
+include README.rst
+include mopidy_mp3quran/ext.conf
+include LICENSE
+include MANIFEST.in
