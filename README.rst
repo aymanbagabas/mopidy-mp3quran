@@ -18,6 +18,7 @@ Configuration
 =============
 
 By default, this extension is enabled. To change that modify the Mopidy configuration file::
+
     [mp3quran]
     enabled = true/false
 
