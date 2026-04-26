@@ -1,7 +1,3 @@
-#!/usr/bin/env python2
-
-from __future__ import absolute_import, unicode_literals
-
 import re
 from setuptools import setup, find_packages
 
@@ -18,9 +14,9 @@ setup(
     license='Apache License, Version 2.0',
     author='Ayman Bagabas',
     author_email='ayman.bagabas@gmail.com',
-    description='Very short description',
+    description='Mopidy extension for streaming Quran from mp3quran.net',
     long_description=open('README.rst').read(),
-    packages=find_packages(exclude=['tests', 'tests.*', 'test.py']),
+    packages=find_packages(),
     zip_safe=False,
     include_package_data=True,
     install_requires=[
@@ -39,7 +35,7 @@ setup(
         'Intended Audience :: End Users/Desktop',
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 3',
         'Topic :: Multimedia :: Sound/Audio :: Players',
     ],
 )
