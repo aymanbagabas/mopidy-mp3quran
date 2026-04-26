@@ -527,3 +527,74 @@ class TestMp3QuranErrorHandling:
             c._ensure_loaded('eng')
             assert 1 in data.radios
             assert len(data.radios) == 1
+
+
+class TestMp3QuranFuzzySearch:
+
+    def test_fuzzy_match_typo(self, client):
+        refs = client.search('eng', 'Meshary')  # typo: Meshary vs Mishary
+        assert len(refs) >= 1
+        assert any('Mishary' in r.name for r in refs)
+
+    def test_fuzzy_match_partial(self, client):
+        refs = client.search('eng', 'Rashid')
+        assert len(refs) >= 1
+        assert any('Mishary' in r.name for r in refs)
+
+    def test_fuzzy_match_moshaf_name(self, client):
+        refs = client.search('eng', 'Warsh')
+        assert len(refs) >= 1
+        assert any('Mishary' in r.name for r in refs)
+
+    def test_fuzzy_match_radio(self, client):
+        refs = client.search('eng', 'Quran FM')
+        assert len(refs) >= 1
+        assert any('Live Quran FM' == r.name for r in refs)
+
+    def test_fuzzy_no_match(self, client):
+        refs = client.search('eng', 'xyznonexistent123')
+        assert refs == []
+
+
+class TestMp3QuranFavorites:
+
+    def test_add_and_get_favorite(self, client, tmp_path):
+        fav_path = str(tmp_path / "favorites.json")
+        client.favorites_path = fav_path
+        client.add_favorite('mp3quran:eng:reciter:1', 'Mishary Rashid Alafasy')
+        refs = client.get_favorites()
+        assert len(refs) == 1
+        assert refs[0].uri == 'mp3quran:eng:reciter:1'
+        assert refs[0].name == 'Mishary Rashid Alafasy'
+
+    def test_add_duplicate_ignored(self, client, tmp_path):
+        fav_path = str(tmp_path / "favorites.json")
+        client.favorites_path = fav_path
+        client.add_favorite('mp3quran:eng:radio:1', 'Quran Radio')
+        client.add_favorite('mp3quran:eng:radio:1', 'Quran Radio')
+        refs = client.get_favorites()
+        assert len(refs) == 1
+
+    def test_remove_favorite(self, client, tmp_path):
+        fav_path = str(tmp_path / "favorites.json")
+        client.favorites_path = fav_path
+        client.add_favorite('mp3quran:eng:reciter:1', 'Mishary')
+        client.add_favorite('mp3quran:eng:radio:1', 'Radio')
+        client.remove_favorite('mp3quran:eng:reciter:1')
+        refs = client.get_favorites()
+        assert len(refs) == 1
+        assert refs[0].uri == 'mp3quran:eng:radio:1'
+
+    def test_get_favorites_empty(self, client, tmp_path):
+        fav_path = str(tmp_path / "favorites.json")
+        client.favorites_path = fav_path
+        refs = client.get_favorites()
+        assert refs == []
+
+    def test_track_type_favorite(self, client, tmp_path):
+        fav_path = str(tmp_path / "favorites.json")
+        client.favorites_path = fav_path
+        client.add_favorite('mp3quran:eng:radio:1', 'Quran Radio', ref_type='track')
+        refs = client.get_favorites()
+        assert len(refs) == 1
+        assert refs[0].type == 'track'

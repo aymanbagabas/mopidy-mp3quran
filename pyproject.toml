@@ -24,6 +24,7 @@ dependencies = [
     "Mopidy >= 4.0",
     "Pykka >= 4.0",
     "requests",
+    "rapidfuzz >= 3.0",
 ]
 
 [project.optional-dependencies]

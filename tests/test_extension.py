@@ -51,6 +51,7 @@ class TestExtension:
         assert "language" in schema
         assert "cache_ttl" in schema
         assert "timeout" in schema
+        assert "favorites_path" in schema
 
     def test_setup_registers_backend(self):
         registry = mock.Mock()

@@ -6,7 +6,8 @@
 
 - Browse and stream Quran recitations from 100+ reciters
 - Listen to Quran radio stations
-- Search reciters by name or recitation style (Riwaya)
+- **Fuzzy search** reciters by name — handles typos and partial matches
+- **Favorites** folder for quick access to saved reciters and radios
 - Configurable language, cache TTL, and request timeout
 - Caching to reduce API calls
 
@@ -31,6 +32,7 @@ enabled = true
 language = english
 cache_ttl = 3600
 timeout = 10
+favorites_path =
 ```
 
 **Configuration options:**
@@ -65,6 +67,7 @@ timeout = 10
 
 - **cache_ttl** - Cache time-to-live in seconds (default: `3600`). Set to `0` to disable caching.
 - **timeout** - HTTP request timeout in seconds (default: `10`).
+- **favorites_path** - Path to JSON file storing favorites. Leave empty to use the default (`~/.local/share/mopidy-mp3quran/favorites.json`).
 
 ## Usage
 
@@ -72,13 +75,14 @@ Browse the library tree:
 
 1. **Mp3Quran** (root) — top-level entry
 2. **Languages** — switch to a different language
-3. **Reciters** — list of all available reciters
-4. **Radios** — list of all radio stations
-5. Select a reciter to see their recitation versions (Moshaf, e.g. Hafs, Warsh)
-6. Select a moshaf to see its available surahs
-7. Select a surah to play it
+3. **Favorites** — quick access to saved reciters and radios
+4. **Reciters** — list of all available reciters
+5. **Radios** — list of all radio stations
+6. Select a reciter to see their recitation versions (Moshaf, e.g. Hafs, Warsh)
+7. Select a moshaf to see its available surahs
+8. Select a surah to play it
 
-Use search to find reciters or radio stations by name.
+Use search to find reciters or radio stations by name. Search uses fuzzy matching so typos and partial names work (e.g. `meshary` finds `Mishary Rashid Alafasy`).
 
 ## Development
 
@@ -128,18 +132,20 @@ Configuration files are in `docker/mopidy.conf` and `docker/snapserver.conf`.
 - Migrate to mp3quran.net v3 REST API
 - Support multiple moshaf (recitation versions) per reciter
 - Add riwayat (narration types) support
+- **Fuzzy search** — handles typos and partial matches (e.g. `meshary` → `Mishary`)
+- **Favorites** folder — save and quickly access preferred reciters and radios
 - Language config now accepts both full names and locale codes (case-insensitive)
 - Migrate to `pyproject.toml` with `src` layout
 - Migrate to Mopidy 4.x API (search on LibraryProvider)
 - Fix proxy configuration bug (config key)
 - Fix search dropping reciter results
-- Add unit test suite (102 tests)
+- Add unit test suite (102+ tests)
 - Remove dead `parse_uri()` function
 - Migrate to Python 3
 - Add error handling for all API calls
 - Add caching with configurable TTL
 - Add search functionality
-- Add configuration options (language, cache_ttl, timeout)
+- Add configuration options (language, cache_ttl, timeout, favorites_path)
 - Add type hints and docstrings
 - Improve error handling in URI parsing and lookup
 

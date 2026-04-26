@@ -232,12 +232,17 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_root(self, library):
         results = library.browse("mp3quran:root")
-        assert len(results) == 5
+        assert len(results) == 6
         assert results[0].uri == "mp3quran:languages"
-        assert results[1].uri == "mp3quran:eng:reciters"
-        assert results[2].uri == "mp3quran:eng:riwayat"
-        assert results[3].uri == "mp3quran:eng:radios"
-        assert results[4].uri == "mp3quran:eng:tafasir"
+        assert results[1].uri == "mp3quran:favorites"
+        assert results[2].uri == "mp3quran:eng:reciters"
+        assert results[3].uri == "mp3quran:eng:riwayat"
+        assert results[4].uri == "mp3quran:eng:radios"
+        assert results[5].uri == "mp3quran:eng:tafasir"
+
+    def test_browse_favorites_empty(self, library):
+        results = library.browse("mp3quran:favorites")
+        assert results == []
 
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")

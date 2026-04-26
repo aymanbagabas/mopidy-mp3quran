@@ -1,9 +1,13 @@
+import json
+import os
 import time
 import logging
 from typing import Dict, List, Optional, Any
 
 import requests
 from mopidy.models import Ref
+from rapidfuzz import fuzz
+
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +15,8 @@ _API_BASE = 'https://mp3quran.net/api/v3/'
 _DEFAULT_CACHE_TTL = 3600  # 1 hour
 _DEFAULT_TIMEOUT = 10  # seconds
 _DEFAULT_LOCALE = 'eng'
+_FUZZY_THRESHOLD = 60
+_DEFAULT_FAVORITES_PATH = os.path.expanduser('~/.local/share/mopidy-mp3quran/favorites.json')
 
 
 class _LocaleData:
@@ -40,10 +46,12 @@ class Mp3Quran:
         session: requests.Session = None,
         cache_ttl: int = _DEFAULT_CACHE_TTL,
         timeout: int = _DEFAULT_TIMEOUT,
+        favorites_path: str = None,
     ) -> None:
         self.session = session or requests.Session()
         self.cache_ttl = cache_ttl
         self.timeout = timeout
+        self.favorites_path = favorites_path or _DEFAULT_FAVORITES_PATH
 
         self.languages: List[Dict[str, str]] = []
         self._languages_timestamp: float = 0.0
@@ -447,24 +455,70 @@ class Mp3Quran:
         return None
 
     def search(self, locale: str, query: str) -> List[Ref]:
-        """Search reciters and radios by name (case-insensitive)."""
+        """Search reciters and radios by name (fuzzy matching)."""
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
         self._init_radios(locale, data)
         results = []
-        query_lower = query.lower()
+        seen_reciters = set()
         for reciter_id, reciter in data.reciters.items():
-            if query_lower in reciter['name'].lower():
+            score = fuzz.partial_ratio(query.lower(), reciter['name'].lower())
+            if score >= _FUZZY_THRESHOLD:
                 results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
-            else:
-                for moshaf in reciter['moshaf']:
-                    if query_lower in moshaf['name'].lower():
-                        results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
-                        break
+                seen_reciters.add(reciter_id)
+                continue
+            for moshaf in reciter['moshaf']:
+                score = fuzz.partial_ratio(query.lower(), moshaf['name'].lower())
+                if score >= _FUZZY_THRESHOLD:
+                    results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
+                    seen_reciters.add(reciter_id)
+                    break
         for radio_id, radio in data.radios.items():
-            if query_lower in radio['name'].lower():
+            score = fuzz.partial_ratio(query.lower(), radio['name'].lower())
+            if score >= _FUZZY_THRESHOLD:
                 results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
         return results
+
+    def _load_favorites(self) -> List[Dict[str, str]]:
+        if not os.path.exists(self.favorites_path):
+            return []
+        try:
+            with open(self.favorites_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning('Mp3Quran: Failed to load favorites: %s', e)
+            return []
+
+    def _save_favorites(self, favorites: List[Dict[str, str]]) -> None:
+        try:
+            os.makedirs(os.path.dirname(self.favorites_path), exist_ok=True)
+            with open(self.favorites_path, 'w', encoding='utf-8') as f:
+                json.dump(favorites, f, ensure_ascii=False, indent=2)
+        except OSError as e:
+            logger.error('Mp3Quran: Failed to save favorites: %s', e)
+
+    def get_favorites(self) -> List[Ref]:
+        favorites = self._load_favorites()
+        results = []
+        for fav in favorites:
+            if fav.get('type') == 'track':
+                results.append(Ref.track(uri=fav['uri'], name=fav['name']))
+            else:
+                results.append(Ref.directory(uri=fav['uri'], name=fav['name']))
+        return results
+
+    def add_favorite(self, uri: str, name: str, ref_type: str = 'directory') -> None:
+        favorites = self._load_favorites()
+        for fav in favorites:
+            if fav['uri'] == uri:
+                return
+        favorites.append({'uri': uri, 'name': name, 'type': ref_type})
+        self._save_favorites(favorites)
+
+    def remove_favorite(self, uri: str) -> None:
+        favorites = self._load_favorites()
+        favorites = [f for f in favorites if f['uri'] != uri]
+        self._save_favorites(favorites)
 
     def refresh(self) -> None:
         """Force re-fetch all data from the API."""

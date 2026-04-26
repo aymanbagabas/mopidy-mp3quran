@@ -46,6 +46,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
             session=self.session,
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
+            favorites_path=mp3quran_config.get('favorites_path'),
         )
 
         self.library = Mp3QuranLibraryProvider(backend=self)
@@ -69,7 +70,13 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
                 self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
             )
             results.append(Ref.directory(uri='mp3quran:languages', name='Languages'))
+            results.append(Ref.directory(uri='mp3quran:favorites', name='Favorites'))
             results.extend(mp3quran.get_language_content(locale))
+            return results
+
+        # mp3quran:favorites
+        if len(parsed) == 2 and parsed[1] == 'favorites':
+            results = mp3quran.get_favorites()
             return results
 
         # mp3quran:languages
