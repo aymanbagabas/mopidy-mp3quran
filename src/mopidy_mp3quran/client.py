@@ -12,10 +12,10 @@ from rapidfuzz import fuzz
 logger = logging.getLogger(__name__)
 
 _API_BASE = 'https://mp3quran.net/api/v3/'
-_DEFAULT_CACHE_TTL = 3600  # 1 hour
-_DEFAULT_TIMEOUT = 10  # seconds
+_DEFAULT_CACHE_TTL = 3600 # 1 hour
+_DEFAULT_TIMEOUT = 10 # seconds
 _DEFAULT_LOCALE = 'eng'
-_FUZZY_THRESHOLD = 60
+_DEFAULT_FUZZY_THRESHOLD = 60
 _DEFAULT_FAVORITES_PATH = os.path.expanduser('~/.local/share/mopidy-mp3quran/favorites.json')
 
 
@@ -46,11 +46,13 @@ class Mp3Quran:
         session: requests.Session = None,
         cache_ttl: int = _DEFAULT_CACHE_TTL,
         timeout: int = _DEFAULT_TIMEOUT,
+        fuzzy_threshold: int = None,
         favorites_path: str = None,
     ) -> None:
         self.session = session or requests.Session()
         self.cache_ttl = cache_ttl
         self.timeout = timeout
+        self.fuzzy_threshold = fuzzy_threshold if fuzzy_threshold is not None else _DEFAULT_FUZZY_THRESHOLD
         self.favorites_path = favorites_path or _DEFAULT_FAVORITES_PATH
 
         self.languages: List[Dict[str, str]] = []
@@ -455,29 +457,49 @@ class Mp3Quran:
         return None
 
     def search(self, locale: str, query: str) -> List[Ref]:
-        """Search reciters and radios by name (fuzzy matching)."""
+        """Search reciters, radios, riwayat, tafasir, and suras by name (fuzzy matching)."""
         data = self._get_locale_data(locale)
         self._init_reciters(locale, data)
         self._init_radios(locale, data)
-        results = []
+        self._init_riwayat(locale, data)
+        self._init_tafasir(locale, data)
+        self._init_suras(locale, data)
+        matches = []
         seen_reciters = set()
+        seen_riwayat = set()
         for reciter_id, reciter in data.reciters.items():
             score = fuzz.partial_ratio(query.lower(), reciter['name'].lower())
-            if score >= _FUZZY_THRESHOLD:
-                results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
+            if score >= self.fuzzy_threshold:
+                matches.append((score, Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name'])))
                 seen_reciters.add(reciter_id)
                 continue
             for moshaf in reciter['moshaf']:
                 score = fuzz.partial_ratio(query.lower(), moshaf['name'].lower())
-                if score >= _FUZZY_THRESHOLD:
-                    results.append(Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name']))
+                if score >= self.fuzzy_threshold:
+                    matches.append((score, Ref.directory(uri='mp3quran:%s:reciter:%d' % (locale, reciter_id), name=reciter['name'])))
                     seen_reciters.add(reciter_id)
                     break
         for radio_id, radio in data.radios.items():
             score = fuzz.partial_ratio(query.lower(), radio['name'].lower())
-            if score >= _FUZZY_THRESHOLD:
-                results.append(Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name']))
-        return results
+            if score >= self.fuzzy_threshold:
+                matches.append((score, Ref.track(uri='mp3quran:%s:radio:%d' % (locale, radio_id), name=radio['name'])))
+        for riwaya_id, riwaya_name in data.riwayat.items():
+            if riwaya_id in seen_riwayat:
+                continue
+            score = fuzz.partial_ratio(query.lower(), riwaya_name.lower())
+            if score >= self.fuzzy_threshold:
+                matches.append((score, Ref.directory(uri='mp3quran:%s:riwaya:%d' % (locale, riwaya_id), name=riwaya_name)))
+                seen_riwayat.add(riwaya_id)
+        for tafsir_id, tafsir in data.tafasir.items():
+            score = fuzz.partial_ratio(query.lower(), tafsir['name'].lower())
+            if score >= self.fuzzy_threshold:
+                matches.append((score, Ref.directory(uri='mp3quran:%s:tafsir:%d' % (locale, tafsir_id), name=tafsir['name'])))
+        for sura_no, sura_name in data.suras_name.items():
+            score = fuzz.partial_ratio(query.lower(), sura_name.lower())
+            if score >= self.fuzzy_threshold:
+                matches.append((score, Ref.track(uri='mp3quran:%s:search:sura:%d' % (locale, sura_no), name=sura_name)))
+        matches.sort(key=lambda x: x[0], reverse=True)
+        return [ref for _, ref in matches]
 
     def _load_favorites(self) -> List[Dict[str, str]]:
         if not os.path.exists(self.favorites_path):
@@ -519,6 +541,9 @@ class Mp3Quran:
         favorites = self._load_favorites()
         favorites = [f for f in favorites if f['uri'] != uri]
         self._save_favorites(favorites)
+
+    def clear_favorites(self) -> None:
+        self._save_favorites([])
 
     def refresh(self) -> None:
         """Force re-fetch all data from the API."""

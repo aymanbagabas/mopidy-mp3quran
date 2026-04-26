@@ -7,7 +7,7 @@ import mopidy_mp3quran
 
 from mopidy_mp3quran import client
 from mopidy import backend, httpclient
-from mopidy.models import Ref, Track, Album, Artist, SearchResult
+from mopidy.models import Ref, Track, Album, Artist, SearchResult, Playlist
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +46,19 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
             session=self.session,
             cache_ttl=mp3quran_config.get('cache_ttl', client._DEFAULT_CACHE_TTL),
             timeout=mp3quran_config.get('timeout', client._DEFAULT_TIMEOUT),
+            fuzzy_threshold=mp3quran_config.get('fuzzy_threshold'),
             favorites_path=mp3quran_config.get('favorites_path'),
         )
 
         self.library = Mp3QuranLibraryProvider(backend=self)
         self.playback = Mp3QuranPlaybackProvider(audio=audio, backend=self)
+        self._playlists = None
+
+    @property
+    def playlists(self):
+        if self._playlists is None:
+            self._playlists = Mp3QuranPlaylistsProvider(backend=self)
+        return self._playlists
 
 
 class Mp3QuranLibraryProvider(backend.LibraryProvider):
@@ -260,3 +268,49 @@ class Mp3QuranPlaybackProvider(backend.PlaybackProvider):
 
     def is_live(self, uri: str) -> bool:
         return uri.startswith('mp3quran:') and ':radio:' in uri
+
+
+class Mp3QuranPlaylistsProvider(backend.PlaylistsProvider):
+    """Playlists provider that exposes favorites as a Mopidy playlist."""
+
+    def as_list(self):
+        favorites = self.backend.mp3quran.get_favorites()
+        items = []
+        for fav in favorites:
+            if fav.type == Ref.TRACK:
+                items.append(Ref.track(uri=fav.uri, name=fav.name))
+            else:
+                items.append(Ref.directory(uri=fav.uri, name=fav.name))
+        playlist = Playlist(
+            uri='mp3quran:favorites_playlist',
+            name='Favorites',
+            items=items,
+        )
+        return [playlist]
+
+    def get_items(self, uri):
+        if uri != 'mp3quran:favorites_playlist':
+            return []
+        favorites = self.backend.mp3quran.get_favorites()
+        items = []
+        for fav in favorites:
+            if fav.type == Ref.TRACK:
+                items.append(Ref.track(uri=fav.uri, name=fav.name))
+            else:
+                items.append(Ref.directory(uri=fav.uri, name=fav.name))
+        return items
+
+    def create(self, name, uri_scheme=None):
+        return None
+
+    def delete(self, uri):
+        return False
+
+    def save(self, playlist):
+        if playlist.uri != 'mp3quran:favorites_playlist':
+            return playlist
+        self.backend.mp3quran.clear_favorites()
+        for item in playlist.items:
+            if item.uri:
+                self.backend.mp3quran.add_favorite(item.uri, item.name, 'track' if item.type == Ref.TRACK else 'directory')
+        return playlist

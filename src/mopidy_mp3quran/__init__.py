@@ -26,6 +26,7 @@ class Extension(ext.Extension):
         schema['language'] = config.String()
         schema['cache_ttl'] = config.Integer(minimum=0)
         schema['timeout'] = config.Integer(minimum=1)
+        schema['fuzzy_threshold'] = config.Integer(minimum=1, maximum=100, optional=True)
         schema['favorites_path'] = config.String(optional=True)
         return schema
 
