@@ -429,7 +429,7 @@ class Mp3Quran:
                 continue
         return results
 
-    def translate_tafsir_uri(self, tafsir_id: int, audio_id: int, locale: str = None) -> Optional[str]:
+    def translate_tafsir_uri(self, tafsir_id: int, audio_id: int, locale: Optional[str] = None) -> Optional[str]:
         tafsir_id = int(tafsir_id)
         audio_id = int(audio_id)
         lang = locale or _DEFAULT_LOCALE

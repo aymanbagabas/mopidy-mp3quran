@@ -28,7 +28,7 @@ By default, this extension is enabled. Modify the Mopidy configuration file to c
 ```ini
 [mp3quran]
 enabled = true
-language = English
+language = english
 cache_ttl = 3600
 timeout = 10
 ```

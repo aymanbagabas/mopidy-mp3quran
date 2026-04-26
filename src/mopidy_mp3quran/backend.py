@@ -35,7 +35,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         self.audio = audio
         self.config = config
         self.session = get_requests_session(
-            proxy_config=self.config["proxy"],
+            proxy_config=self.config.get("proxy", {}),
             user_agent='%s/%s' % (
                 mopidy_mp3quran.Extension.dist_name,
                 mopidy_mp3quran.__version__)
@@ -83,6 +83,9 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             return results
 
         locale = parsed[1]
+        if not locale:
+            logger.debug('Empty locale in uri: %s', uri)
+            return results
         variant = parsed[2]
         identifier = parsed[3] if len(parsed) >= 4 else None
         extra = parsed[4] if len(parsed) >= 5 else None
@@ -193,7 +196,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
     def search(self, query=None, uris=None, exact=False) -> SearchResult:
         if query is None:
-            return None
+            return SearchResult()
 
         if isinstance(query, dict):
             query_str = ' '.join(
@@ -203,7 +206,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             query_str = str(query)
 
         if not query_str.strip():
-            return None
+            return SearchResult()
 
         mp3quran = self.backend.mp3quran
         locale = mp3quran.resolve_language(

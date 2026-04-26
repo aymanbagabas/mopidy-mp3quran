@@ -3,7 +3,7 @@ from unittest import mock
 import pytest
 import responses
 
-from mopidy.models import Ref, Track, Artist, SearchResult
+from mopidy.models import Ref, SearchResult
 from mopidy_mp3quran.backend import (
     Mp3QuranBackend,
     Mp3QuranLibraryProvider,
@@ -391,11 +391,13 @@ class TestMp3QuranLibrarySearch:
 
     def test_search_none_query(self, library):
         result = library.search(query=None)
-        assert result is None
+        assert isinstance(result, SearchResult)
+        assert len(result.tracks) == 0
 
     def test_search_empty_query(self, library):
         result = library.search(query="")
-        assert result is None
+        assert isinstance(result, SearchResult)
+        assert len(result.tracks) == 0
 
     def test_search_dict_query(self, library):
         result = library.search(query={"any": "Mishary"})

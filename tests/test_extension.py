@@ -63,7 +63,7 @@ class TestExtension:
         assert args[0][1] is Mp3QuranBackend
 
     def test_get_default_config_file_exists(self):
-        ext = Extension()
-        conf_dir = os.path.dirname(os.path.abspath(ext.get_default_config.__code__.co_filename))
-        conf_file = os.path.join(conf_dir, "ext.conf")
+        import mopidy_mp3quran
+        pkg_dir = os.path.dirname(os.path.abspath(mopidy_mp3quran.__file__))
+        conf_file = os.path.join(pkg_dir, "ext.conf")
         assert os.path.exists(conf_file)
