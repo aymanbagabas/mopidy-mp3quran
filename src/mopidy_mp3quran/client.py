@@ -21,7 +21,7 @@ class _LocaleData:
     __slots__ = ('reciters', 'radios', 'suras_name', 'riwayat', 'moshaf', 'tafasir',
                  'tafsir_audio',
                  'reciters_ts', 'radios_ts', 'suras_ts', 'riwayat_ts', 'moshaf_ts', 'tafasir_ts',
-                 'tafsir_audio_ts')
+                 'tafsir_audio_ts_map')
 
     def __init__(self):
         self.reciters: Dict[int, Dict[str, Any]] = {}
@@ -37,7 +37,7 @@ class _LocaleData:
         self.riwayat_ts: float = 0.0
         self.moshaf_ts: float = 0.0
         self.tafasir_ts: float = 0.0
-        self.tafsir_audio_ts: float = 0.0
+        self.tafsir_audio_ts_map: Dict[int, float] = {}
 
 
 class Mp3Quran:
@@ -166,7 +166,7 @@ class Mp3Quran:
         resp = self._fetch(url)
         if resp is None:
             return
-        for m in resp.get('riwayat', []):
+        for m in resp.get('moshaf', []):
             try:
                 data.moshaf[int(m['id'])] = {
                     'name': m['name'],
@@ -621,7 +621,8 @@ class Mp3Quran:
 
     def _init_tafsir_audio(self, locale: str, data: _LocaleData, tafsir_id: int) -> None:
         """Fetch and cache audio entries for a specific tafsir."""
-        if tafsir_id in data.tafsir_audio and self._is_cache_valid(data.tafsir_audio_ts):
+        ts = data.tafsir_audio_ts_map.get(tafsir_id, 0.0)
+        if tafsir_id in data.tafsir_audio and self._is_cache_valid(ts):
             return
         url = _API_BASE + 'tafsir?tafsir=%d&language=%s' % (tafsir_id, locale)
         resp = self._fetch(url)
@@ -638,7 +639,7 @@ class Mp3Quran:
                 logger.warning('Mp3Quran: Skipping invalid tafsir audio entry: %s', e)
                 continue
         data.tafsir_audio[tafsir_id] = audio_map
-        data.tafsir_audio_ts = time.time()
+        data.tafsir_audio_ts_map[tafsir_id] = time.time()
 
     def tafsir_audio(self, locale: str, tafsir_id: int) -> List[Ref]:
         data = self._get_locale_data(locale)
@@ -694,18 +695,21 @@ class Mp3Quran:
                     self._merge(scored['artists'], self._match_reciters(data, locale, value, exact))
                 if field in ('any', 'album'):
                     self._merge(scored['albums'], self._match_moshafs(data, locale, value, exact))
-                if field in ('any', 'track_name'):
+                if field in ('any', 'track', 'track_name'):
                     self._merge(scored['tracks'], self._match_suwar(data, locale, value, exact))
                 if field == 'any':
                     self._merge(scored['tracks'], self._match_radios(data, locale, value, exact))
 
         if uris is not None:
             scopes = {u for u in uris if u.startswith('mp3quran:')}
-            for category in scored:
-                scored[category] = {
-                    uri: v for uri, v in scored[category].items()
-                    if any(uri.startswith(s) or uri.startswith(s.rstrip('s') + ':') for s in scopes)
-                }
+            if scopes:
+                for category in scored:
+                    filtered = {}
+                    for uri, v in scored[category].items():
+                        item = v[0]
+                        if self._uri_matches_scopes(item, scopes):
+                            filtered[uri] = v
+                    scored[category] = filtered
 
         return SearchResult(
             uri=Uri('mp3quran:search'),
@@ -720,6 +724,36 @@ class Mp3Quran:
         for ref, score in refs:
             if ref.uri not in target or score > target[ref.uri][1]:
                 target[ref.uri] = (ref, score)
+
+    def _uri_starts_with_scope(self, uri, scope: str) -> bool:
+        """Check if URI starts with scope, handling plural/singular."""
+        if not uri:
+            return False
+        return uri.startswith(scope) or uri.startswith(scope.rstrip('s') + ':')
+
+    def _uri_matches_scopes(self, item, scopes: set) -> bool:
+        """Check if item matches any scope, including related metadata."""
+        item_uri = getattr(item, 'uri', None)
+        for scope in scopes:
+            if self._uri_starts_with_scope(item_uri, scope):
+                return True
+            parts = scope.split(':')
+            if len(parts) >= 3 and parts[2] == 'suwar':
+                if getattr(item, 'track_no', None):
+                    return True
+            if len(parts) == 4 and parts[2] == 'sura':
+                try:
+                    if getattr(item, 'track_no', None) == int(parts[3]):
+                        return True
+                except ValueError:
+                    pass
+            album = getattr(item, 'album', None)
+            if album and self._uri_starts_with_scope(getattr(album, 'uri', None), scope):
+                return True
+            for artist in getattr(item, 'artists', ()) or ():
+                if self._uri_starts_with_scope(getattr(artist, 'uri', None), scope):
+                    return True
+        return False
 
     def _match_reciters(self, data: _LocaleData, locale: str, query: str, exact: bool) -> list:
         choices = {reciter['name']: rid for rid, reciter in data.reciters.items()}
@@ -796,7 +830,7 @@ class Mp3Quran:
             return self._distinct_reciters(data, query)
         elif field == 'album':
             return self._distinct_moshafs(data, query)
-        elif field == 'track_name':
+        elif field in ('track', 'track_name'):
             return self._distinct_suwar(data, query)
 
         return set()

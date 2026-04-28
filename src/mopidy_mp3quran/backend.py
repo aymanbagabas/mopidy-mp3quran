@@ -37,7 +37,7 @@ class Mp3QuranBackend(pykka.ThreadingActor, backend.Backend):
         self.audio = audio
         self.config = config
         self.session = get_requests_session(
-            proxy_config=self.config["proxy"],
+            proxy_config=self.config.get("proxy", {}),
             user_agent='%s/%s' % (
                 mopidy_mp3quran.Extension.dist_name,
                 mopidy_mp3quran.__version__)
@@ -142,16 +142,16 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
 
     def search(self, query=None, uris=None, exact=False) -> SearchResult:
         if query is None:
-            return None
+            return SearchResult(uri=Uri('mp3quran:search'))
 
         if not query:
-            return None
+            return SearchResult(uri=Uri('mp3quran:search'))
 
         if isinstance(query, dict):
             if not any(query.values()):
-                return None
+                return SearchResult(uri=Uri('mp3quran:search'))
         else:
-            return None
+            return SearchResult(uri=Uri('mp3quran:search'))
 
         mp3quran = self.backend.mp3quran
         locale = mp3quran.resolve_language(
