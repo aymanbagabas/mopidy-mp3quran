@@ -166,7 +166,7 @@ class Mp3Quran:
         resp = self._fetch(url)
         if resp is None:
             return
-        for m in resp.get('moshaf', []):
+        for m in resp.get('riwayat', []):
             try:
                 data.moshaf[int(m['id'])] = {
                     'name': m['name'],
