@@ -1,5 +1,6 @@
 import logging
-from typing import List, Optional
+from collections.abc import Iterable
+from typing import List, Optional, Set
 
 import requests as _requests
 import pykka
@@ -8,6 +9,7 @@ import mopidy_mp3quran
 from mopidy_mp3quran import client
 from mopidy import backend, httpclient
 from mopidy.models import Ref, Track, Album, Artist, SearchResult
+from mopidy.types import DistinctField, Query, SearchField, Uri
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +100,15 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
         elif variant == 'riwayat':
             results = mp3quran.get_riwayat(locale)
         elif variant == 'riwaya' and identifier:
-            results = mp3quran.riwaya_reciters(locale, int(identifier))
+            results = mp3quran.riwaya_moshafs(locale, int(identifier))
+        elif variant == 'moshaf' and not identifier:
+            results = mp3quran.get_moshaf(locale)
+        elif variant == 'moshaf_type' and identifier:
+            results = mp3quran.moshaf_reciters(locale, int(identifier))
+        elif variant == 'suwar':
+            results = mp3quran.get_suwar(locale)
+        elif variant == 'sura' and identifier:
+            results = mp3quran.sura_moshafs(locale, int(identifier))
         elif variant == 'radios':
             results = mp3quran.get_radios(locale)
         elif variant == 'tafasir':
@@ -113,96 +123,34 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
     def refresh(self, uri: Optional[str] = None) -> None:
         self.backend.mp3quran.refresh()
 
-    def lookup(self, uri: str) -> List[Track]:
-        """Look up a track by URI."""
-        tracks = []
-        parsed_uri = uri.split(':')[1:]
-        logger.debug('Looking up uri: %s', uri)
+    def get_distinct(
+        self,
+        field: DistinctField,
+        query: Query[SearchField] = None,
+    ) -> Set[str]:
+        locale = self.backend.mp3quran.resolve_language(
+            self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
+        )
+        return self.backend.mp3quran.get_distinct(locale, field, query)
 
-        if len(parsed_uri) < 3:
-            logger.debug('Invalid uri format: %s', uri)
-            return tracks
-
-        try:
-            locale = parsed_uri[0]
-            variant = parsed_uri[1]
-            if variant == 'reciter':
-                if len(parsed_uri) != 5:
-                    logger.debug('Invalid reciter uri format: %s', uri)
-                    return tracks
-                reciter_id = int(parsed_uri[2])
-                moshaf_id = int(parsed_uri[3])
-                sura_no = int(parsed_uri[4])
-            elif variant == 'radio':
-                radio_id = int(parsed_uri[2])
-            elif variant == 'tafsir_audio':
-                if len(parsed_uri) != 4:
-                    logger.debug('Invalid tafsir_audio uri format: %s', uri)
-                    return tracks
-                tafsir_id = int(parsed_uri[2])
-                audio_id = int(parsed_uri[3])
-            else:
-                logger.debug('Unknown variant in uri: %s', uri)
-                return tracks
-        except (ValueError, IndexError) as e:
-            logger.debug('Invalid uri %s: %s', uri, e)
-            return tracks
-
+    def lookup_many(self, uris: Iterable[Uri]) -> dict[Uri, list[Track]]:
         mp3quran = self.backend.mp3quran
-        data = mp3quran._get_locale_data(locale)
-
-        if variant == 'reciter':
-            mp3quran._init_reciters(locale, data)
-            mp3quran._init_suras(locale, data)
-            if reciter_id not in data.reciters:
-                logger.debug('Reciter ID %d not found', reciter_id)
-                return tracks
-            reciter = data.reciters[reciter_id]
-            moshaf_found = None
-            for moshaf in reciter['moshaf']:
-                if moshaf['id'] == moshaf_id:
-                    moshaf_found = moshaf
-                    break
-            if moshaf_found is None:
-                logger.debug('Moshaf ID %d not found for reciter %d', moshaf_id, reciter_id)
-                return tracks
-            sura_name = data.suras_name.get(sura_no, 'Surah %d' % sura_no)
-            artists = [Artist(name=reciter['name'])]
-            album = Album(name=moshaf_found['name'])
-            tracks.append(Track(
-                uri=uri, name=sura_name,
-                artists=artists, album=album, track_no=sura_no,
-            ))
-        elif variant == 'radio':
-            mp3quran._init_radios(locale, data)
-            if radio_id in data.radios:
-                radio = data.radios[radio_id]
-                tracks.append(Track(uri=uri, name=radio['name']))
-            else:
-                logger.debug('Radio ID %d not found', radio_id)
-        elif variant == 'tafsir_audio':
-            mp3quran._init_tafasir(locale, data)
-            url = mp3quran.translate_tafsir_uri(tafsir_id, audio_id, locale=locale)
-            if url:
-                tafsir_name = data.tafasir.get(tafsir_id, {}).get('name', 'Tafsir')
-                tracks.append(Track(uri=uri, name=tafsir_name, album=Album(name=tafsir_name)))
-            else:
-                logger.debug('Tafsir audio %d/%d not found', tafsir_id, audio_id)
-
-        return tracks
+        locale = mp3quran.resolve_language(
+            self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
+        )
+        return mp3quran.lookup(locale, uris)
 
     def search(self, query=None, uris=None, exact=False) -> SearchResult:
         if query is None:
             return None
 
-        if isinstance(query, dict):
-            query_str = ' '.join(
-                v for vals in query.values() for v in (vals if isinstance(vals, list) else [vals])
-            )
-        else:
-            query_str = str(query)
+        if not query:
+            return None
 
-        if not query_str.strip():
+        if isinstance(query, dict):
+            if not any(query.values()):
+                return None
+        else:
             return None
 
         mp3quran = self.backend.mp3quran
@@ -210,26 +158,7 @@ class Mp3QuranLibraryProvider(backend.LibraryProvider):
             self.backend.config.get('mp3quran', {}).get('language', client._DEFAULT_LOCALE)
         )
 
-        results = mp3quran.search(locale, query_str)
-        tracks = []
-        artists = []
-        for ref in results:
-            if ref.type == Ref.TRACK:
-                lookup_tracks = self.lookup(ref.uri)
-                tracks.extend(lookup_tracks)
-            elif ref.type == Ref.DIRECTORY and ref.uri.startswith('mp3quran:'):
-                try:
-                    parts = ref.uri.split(':')
-                    if len(parts) >= 4 and parts[2] == 'reciter':
-                        reciter_id = int(parts[3])
-                        data = mp3quran._get_locale_data(locale)
-                        mp3quran._init_reciters(locale, data)
-                        reciter = data.reciters[reciter_id]
-                        artists.append(Artist(name=reciter['name']))
-                except (IndexError, ValueError, KeyError):
-                    logger.debug('Could not extract artist from ref: %s', ref.uri)
-
-        return SearchResult(tracks=tracks, artists=artists)
+        return mp3quran.search(locale, query, uris=uris, exact=exact)
 
 
 class Mp3QuranPlaybackProvider(backend.PlaybackProvider):

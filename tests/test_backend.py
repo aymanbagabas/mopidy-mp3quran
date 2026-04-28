@@ -27,6 +27,12 @@ RIWAYAT_RESPONSE = {
     ]
 }
 
+MOSHAF_CATALOG_RESPONSE = {
+    "riwayat": [
+        {"id": 11, "moshaf_type": 1, "moshaf_id": 1, "name": "Rewayat Hafs A'n Assem - Murattal"},
+    ]
+}
+
 RECITERS_RESPONSE = {
     "reciters": [
         {
@@ -148,6 +154,12 @@ def mocked_api():
         )
         responses.add(
             responses.GET,
+            _api_url('moshaf?language=eng'),
+            json=MOSHAF_CATALOG_RESPONSE,
+            status=200,
+        )
+        responses.add(
+            responses.GET,
             _api_url('reciters?language=eng'),
             json=RECITERS_RESPONSE,
             status=200,
@@ -232,12 +244,14 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_root(self, library):
         results = library.browse("mp3quran:root")
-        assert len(results) == 5
+        assert len(results) == 7
         assert results[0].uri == "mp3quran:languages"
         assert results[1].uri == "mp3quran:eng:reciters"
         assert results[2].uri == "mp3quran:eng:riwayat"
-        assert results[3].uri == "mp3quran:eng:radios"
-        assert results[4].uri == "mp3quran:eng:tafasir"
+        assert results[3].uri == "mp3quran:eng:moshaf"
+        assert results[4].uri == "mp3quran:eng:suwar"
+        assert results[5].uri == "mp3quran:eng:radios"
+        assert results[6].uri == "mp3quran:eng:tafasir"
 
     def test_browse_languages(self, library):
         results = library.browse("mp3quran:languages")
@@ -249,11 +263,13 @@ class TestMp3QuranLibraryProvider:
 
     def test_browse_language_shows_categories(self, library):
         results = library.browse("mp3quran:ar:language")
-        assert len(results) == 4
+        assert len(results) == 6
         assert results[0].uri == "mp3quran:ar:reciters"
         assert results[1].uri == "mp3quran:ar:riwayat"
-        assert results[2].uri == "mp3quran:ar:radios"
-        assert results[3].uri == "mp3quran:ar:tafasir"
+        assert results[2].uri == "mp3quran:ar:moshaf"
+        assert results[3].uri == "mp3quran:ar:suwar"
+        assert results[4].uri == "mp3quran:ar:radios"
+        assert results[5].uri == "mp3quran:ar:tafasir"
 
     def test_browse_reciters(self, library):
         results = library.browse("mp3quran:eng:reciters")
@@ -282,10 +298,34 @@ class TestMp3QuranLibraryProvider:
         assert results[0].name == "Rewayat Hafs A'n Assem"
         assert results[0].type == Ref.DIRECTORY
 
-    def test_browse_riwaya_reciters(self, library):
+    def test_browse_riwaya_moshafs(self, library):
         results = library.browse("mp3quran:eng:riwaya:1")
-        assert len(results) == 1
-        assert results[0].uri == "mp3quran:eng:moshaf:1:1"
+        assert len(results) >= 1
+        assert all(':moshaf:' in r.uri for r in results)
+
+    def test_browse_moshaf(self, library):
+        results = library.browse("mp3quran:eng:moshaf")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf_type:")
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_moshaf_type_reciters(self, library):
+        results = library.browse("mp3quran:eng:moshaf_type:11")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf:")
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_suwar(self, library):
+        results = library.browse("mp3quran:eng:suwar")
+        assert len(results) == 3
+        assert results[0].uri == "mp3quran:eng:sura:1"
+        assert results[0].name == "Al-Fatihah"
+        assert results[0].type == Ref.DIRECTORY
+
+    def test_browse_sura_moshafs(self, library):
+        results = library.browse("mp3quran:eng:sura:1")
+        assert len(results) >= 1
+        assert results[0].uri.startswith("mp3quran:eng:moshaf:")
         assert results[0].type == Ref.DIRECTORY
 
     def test_browse_radios(self, library):
@@ -322,16 +362,18 @@ class TestMp3QuranLibraryProvider:
                 json=TAFASIR_DETAIL_RESPONSE,
                 status=200,
             )
-            tracks = library.lookup("mp3quran:eng:tafsir_audio:1:9")
+            result = library.lookup_many(["mp3quran:eng:tafsir_audio:1:9"])
+            tracks = result["mp3quran:eng:tafsir_audio:1:9"]
             assert len(tracks) == 1
-            assert tracks[0].name == "Summary of Tafsir Al-Tabari"
+            assert tracks[0].name == "Surah Al-Fatihah"
 
     def test_browse_unknown_uri(self, library):
         results = library.browse("mp3quran:unknown")
         assert results == []
 
     def test_lookup_reciter_surah(self, library):
-        tracks = library.lookup("mp3quran:eng:reciter:1:1:2")
+        result = library.lookup_many(["mp3quran:eng:reciter:1:1:2"])
+        tracks = result["mp3quran:eng:reciter:1:1:2"]
         assert len(tracks) == 1
         track = tracks[0]
         assert track.uri == "mp3quran:eng:reciter:1:1:2"
@@ -341,75 +383,134 @@ class TestMp3QuranLibraryProvider:
         assert track.track_no == 2
 
     def test_lookup_radio(self, library):
-        tracks = library.lookup("mp3quran:eng:radio:1")
+        result = library.lookup_many(["mp3quran:eng:radio:1"])
+        tracks = result["mp3quran:eng:radio:1"]
         assert len(tracks) == 1
         assert tracks[0].uri == "mp3quran:eng:radio:1"
         assert tracks[0].name == "Quran Radio 24/7"
 
     def test_lookup_invalid_uri(self, library):
-        tracks = library.lookup("mp3quran:")
-        assert tracks == []
+        result = library.lookup_many(["mp3quran:"])
+        assert result == {"mp3quran:": []}
 
     def test_lookup_unknown_variant(self, library):
-        tracks = library.lookup("mp3quran:eng:unknown:1")
-        assert tracks == []
+        result = library.lookup_many(["mp3quran:eng:unknown:1"])
+        assert result == {"mp3quran:eng:unknown:1": []}
 
     def test_lookup_nonexistent_reciter(self, library):
-        tracks = library.lookup("mp3quran:eng:reciter:999:1:1")
-        assert tracks == []
+        result = library.lookup_many(["mp3quran:eng:reciter:999:1:1"])
+        assert result == {"mp3quran:eng:reciter:999:1:1": []}
 
     def test_lookup_nonexistent_radio(self, library):
-        tracks = library.lookup("mp3quran:eng:radio:99")
-        assert tracks == []
+        result = library.lookup_many(["mp3quran:eng:radio:99"])
+        assert result == {"mp3quran:eng:radio:99": []}
 
     def test_lookup_invalid_identifier(self, library):
-        tracks = library.lookup("mp3quran:eng:reciter:abc")
-        assert tracks == []
+        result = library.lookup_many(["mp3quran:eng:reciter:abc"])
+        assert result == {"mp3quran:eng:reciter:abc": []}
+
+    def test_lookup_reciter_expands_to_tracks(self, library):
+        result = library.lookup_many(["mp3quran:eng:reciter:1"])
+        assert "mp3quran:eng:reciter:1" in result
+        tracks = result["mp3quran:eng:reciter:1"]
+        assert len(tracks) > 1
+        assert all(any(a.name == "Mishary Rashid Alafasy" for a in t.artists) for t in tracks)
+        moshaf_names = {t.album.name for t in tracks}
+        assert "Rewayat Hafs A'n Assem - Murattal" in moshaf_names
+
+    def test_lookup_moshaf_expands_to_tracks(self, library):
+        result = library.lookup_many(["mp3quran:eng:moshaf:1:1"])
+        tracks = result["mp3quran:eng:moshaf:1:1"]
+        assert len(tracks) >= 1
+        assert all(t.album.name == "Rewayat Hafs A'n Assem - Murattal" for t in tracks)
+
+    def test_lookup_many_multiple_uris(self, library):
+        result = library.lookup_many(["mp3quran:eng:reciter:1:1:1", "mp3quran:eng:radio:1"])
+        assert "mp3quran:eng:reciter:1:1:1" in result
+        assert "mp3quran:eng:radio:1" in result
+        assert len(result["mp3quran:eng:reciter:1:1:1"]) == 1
+        assert len(result["mp3quran:eng:radio:1"]) == 1
 
     def test_refresh(self, library):
         with mock.patch.object(library.backend.mp3quran, "refresh") as mock_refresh:
             library.refresh()
             mock_refresh.assert_called_once()
 
+    def test_get_distinct_artist(self, library):
+        result = library.get_distinct('artist')
+        assert "Mishary Rashid Alafasy" in result
+
+    def test_get_distinct_album(self, library):
+        result = library.get_distinct('album')
+        assert "Rewayat Hafs A'n Assem - Murattal" in result
+
+    def test_get_distinct_track_name(self, library):
+        result = library.get_distinct('track_name')
+        assert "Al-Fatihah" in result
+
+    def test_get_distinct_unknown_field(self, library):
+        result = library.get_distinct('genre')
+        assert result == set()
+
+    def test_get_distinct_artist_with_query(self, library):
+        result = library.get_distinct('artist', query={'album': 'Hafs'})
+        assert "Mishary Rashid Alafasy" in result
+
 
 class TestMp3QuranLibrarySearch:
 
     def test_search_reciter(self, library):
-        result = library.search(query="Mishary")
+        result = library.search(query={"any": "Mishary"})
         assert isinstance(result, SearchResult)
-        assert len(result.artists) == 1
+        assert len(result.artists) >= 1
         assert result.artists[0].name == "Mishary Rashid Alafasy"
 
-    def test_search_radio(self, library):
-        result = library.search(query="Radio")
+    def test_search_artist_field(self, library):
+        result = library.search(query={"artist": "Mishary"})
+        assert isinstance(result, SearchResult)
+        assert len(result.artists) >= 1
+
+    def test_search_album_field(self, library):
+        result = library.search(query={"album": "Hafs"})
+        assert isinstance(result, SearchResult)
+        assert len(result.albums) >= 1
+
+    def test_search_track_name_field(self, library):
+        result = library.search(query={"track_name": "Fatihah"})
         assert isinstance(result, SearchResult)
         assert len(result.tracks) >= 1
 
-    def test_search_returns_both_tracks_and_artists(self, library):
-        result = library.search(query="Hafs")
-        assert len(result.artists) >= 1
+    def test_search_radio(self, library):
+        result = library.search(query={"any": "Radio"})
+        assert isinstance(result, SearchResult)
+        assert len(result.tracks) >= 1
 
     def test_search_none_query(self, library):
         result = library.search(query=None)
         assert result is None
 
-    def test_search_empty_query(self, library):
-        result = library.search(query="")
+    def test_search_empty_dict_query(self, library):
+        result = library.search(query={})
         assert result is None
-
-    def test_search_dict_query(self, library):
-        result = library.search(query={"any": "Mishary"})
-        assert len(result.artists) >= 1
 
     def test_search_dict_query_multiple_values(self, library):
         result = library.search(query={"any": ["Mishary", "Alafasy"]})
         assert isinstance(result, SearchResult)
 
     def test_search_no_results(self, library):
-        result = library.search(query="nonexistentxyz123")
+        result = library.search(query={"any": "nonexistentxyz123"})
         assert isinstance(result, SearchResult)
         assert len(result.tracks) == 0
         assert len(result.artists) == 0
+        assert len(result.albums) == 0
+
+    def test_search_exact(self, library):
+        result = library.search(query={"artist": "mishary"}, exact=True)
+        assert len(result.artists) == 0
+
+    def test_search_exact_case_insensitive(self, library):
+        result = library.search(query={"artist": "Mishary Rashid Alafasy"}, exact=True)
+        assert len(result.artists) >= 1
 
 
 class TestMp3QuranPlaybackProvider:
