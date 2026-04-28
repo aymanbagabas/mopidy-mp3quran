@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "Mopidy-Mp3Quran"
-version = "0.2.0"
+version = "0.2.1"
 description = "Mopidy extension for streaming Quran from mp3quran.net"
 readme = "README.md"
 license = "MIT"

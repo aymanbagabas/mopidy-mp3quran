@@ -17,7 +17,7 @@ class TestExtension:
     def test_version(self):
         from packaging.version import Version
         ext = Extension()
-        assert Version(ext.version) == Version("0.2.0")
+        assert Version(ext.version) == Version("0.2.1")
 
     def test_get_default_config_has_section(self):
         ext = Extension()
