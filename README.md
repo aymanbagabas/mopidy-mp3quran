@@ -71,7 +71,7 @@ timeout = 10
 Browse the library tree:
 
 1. **Mp3Quran** (root) — top-level entry
-2. **Languages** — switch to a different language
+2. **Languages** — browse by available languages (e.g. English, Arabic)
 3. **Reciters** — list of all available reciters
 4. **Radios** — list of all radio stations
 5. Select a reciter to see their recitation versions (Moshaf, e.g. Hafs, Warsh)
